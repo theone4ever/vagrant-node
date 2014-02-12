@@ -1,6 +1,6 @@
 require 'pp'
 require "rexml/document"
-#require 'rubygems'
+require 'rubygems'
 require 'zip/zip'
 
 
@@ -10,6 +10,7 @@ module Vagrant
   	class SnapshotAction
   		LIST = :list
   		TAKE = :take
+  		DELETE = :delete
   		RESTORE = :restore
   		BACKUP = :backup
   		ERROR = :error
@@ -22,7 +23,8 @@ module Vagrant
 				
 				#FIXME generate a result code error to this case in order 
 				#to provide more info to the client
-				return @app.call(env) if env[:machine].state.id==:not_created
+				raise RestException.new(406,"Couldn't perform the operation because machine is not yet created") if env[:machine].state.id==:not_created    
+				#return @app.call(env) if env[:machine].state.id==:not_created
 				
 				current_driver=env[:machine].provider.driver
 				
@@ -41,9 +43,10 @@ module Vagrant
 						env[:snapshots_list]=current_driver.list
 					when TAKE then
 						env[:last_snapshot]=current_driver.take_snapshot(env[:snapshot_name],env[:snapshot_desc])
-					when RESTORE then
-						
+					when RESTORE then						
 						env[:restore_result]=current_driver.restore_snapshot(env[:snapshot_id])
+					when DELETE then					             
+            env[:delete_result]=current_driver.delete_snapshot(env[:snapshot_id])            
 					when BACKUP then
 						env[:bak_filename]=current_driver.backup_vm(env[:machine].name.to_s,env[:machine].data_dir)
 				end
@@ -63,38 +66,61 @@ module Vagrant
 				#FIXME Si no se hace con --pause y la máquina esta running
 				#se produce un error y deja a la máquina en estado 'gurumeditating'
 				def driver.take_snapshot(name,description=" ")						
-						
+          
+          raise RestException.new(400,"Snapshot name can't be emtpy") if name.empty?						
+					
+					#Snapshots with the same name are not allowed
 					begin
-						#Execute the take command
-						if (description)
-							execute("snapshot",self.uuid,"take",name,"--description",description,"--pause")
-						else
-							execute("snapshot",self.uuid,"take",name,"--pause")
-						end
-
-						snapshot = {}						
-						#Getting the uuid of the latest snapshot
-						execute("snapshot",self.uuid,"list").split("\n").each do |line|
-						
-							if line =~ /Name:\s(.*?)\s\(UUID:\s(.*?)\)\s\*$/						
-								snapshot[:name] = $1
-								snapshot[:id] = $2
-							end
-						
-						end
-						
-						#return snapshot
-						snapshot					
-						
-						
-					rescue => e
-						puts e.message
-						return nil
+					   #if this command doesn't fail means that there is a snapshot with the same name
+					   execute("snapshot",self.uuid,"showvminfo",name)					   
+					   raise RestException.new(400,"There is a snapshot with the same name, please choose another name for the new snapshot")
+					rescue Vagrant::Errors::VBoxManageError => e
+					  #Doing nothing continue with the snapshot creation
 					end
+					 
+					
+					#Execute the take command
+					if (description)
+						execute("snapshot",self.uuid,"take",name,"--description",description,"--pause")
+					else
+						execute("snapshot",self.uuid,"take",name,"--pause")
+					end
+
+					snapshot = {}					
+					
+					#Getting the uuid of the latest snapshot
+					execute("snapshot",self.uuid,"list").split("\n").each do |line|						
+						if line =~ /Name:\s(.*?)\s\(UUID:\s(.*?)\)\s\*$/						
+							snapshot[:name] = $1
+							snapshot[:id] = $2
+						end
+					
+					end
+					
+					
+					#return snapshot
+					snapshot
 						
 						
 				end #driver.take_snapshot
 			
+				def driver.delete_snapshot(snapid)
+				  raise RestException.new(400,"Snapshot Identifier can't be emtpy") if snapid.empty?
+				  begin
+  				  execute("snapshot",self.uuid,"delete",snapid)
+  				  return true
+				  rescue =>e
+  			   if e.message =~ /VBOX_E_OBJECT_NOT_FOUND/
+  			     raise RestException.new(404,"The snapshot identifier provided doesn't exist")
+  			   elsif e.message =~ /NS_ERROR_FAILURE/
+  			     raise RestException.new(500,"Internal VBoxManage Error: can't delete the snapshot, try shutting down the Vm")
+  			   else
+  			    raise RestException.new(500,"Internal VBoxManage Error")
+  			   end  				   
+				  end
+				end 
+				
+				
 				
 				def driver.backup_vm(vmname,path)						
 					
@@ -198,8 +224,8 @@ module Vagrant
 					if path					
 						path.elements.each("Snapshot") { |element|
 							snapshot = {}
-							
-							snapshot[:uuid] = element.attributes["uuid"]							
+							original_uuid = element.attributes["uuid"]	
+							snapshot[:uuid] = original_uuid[1..original_uuid.length-2]							
 							snapshot[:name] = element.attributes["name"]							
 							snapshot[:timestamp] = element.attributes["timeStamp"]
 							
@@ -209,8 +235,7 @@ module Vagrant
 								snapshot[:description] =	" "
 							end
 							
-							if (snapshot[:uuid]==@current_snapshot)
-																					
+							if (original_uuid==@current_snapshot)
 								snapshot[:current_state] = true
 							else
 								snapshot[:current_state] = false

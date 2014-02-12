@@ -2,8 +2,9 @@ require 'rubygems'
 require 'vagrant-node/api'
 require 'vagrant-node/pidfile'
 require 'webrick'
-
-
+require 'vagrant-node/dbmanager'
+require 'io/console'
+#FIXME EVALUAR SI MERECE LA PENA HACER AUTENTICACION DE PASSWORD AQUI
 #FIXME Problema con el logging ya que únicamnete
 #vuelca al fichero todo cuando se acaba el proceso con el 
 #vagrant server stop
@@ -15,13 +16,16 @@ module Vagrant
 				DEFAULT_BIND_PORT = 3333	
 				BIND_ADDRESS = "0.0.0.0"
 				LOG_FILE = "webrick.log"						
-				def self.run(pid_path,log_path,port=DEFAULT_BIND_PORT)
+				def self.run(pid_path,data_path,port=DEFAULT_BIND_PORT)
+					
+					check_password(data_path);
+					
 					pid_file = File.join(pid_path,PIDFILENAME)
 								
 					pid = fork do
 					
 						
-						log_file = File.open (log_path + LOG_FILE).to_s, 'a+'
+						log_file = File.open (data_path + LOG_FILE).to_s, 'a+'
 						
 						log = WEBrick::Log.new log_file
 						
@@ -38,7 +42,7 @@ module Vagrant
 							:AccessLog => access_log
 						}
 						
-						begin
+						#begin
 							server = WEBrick::HTTPServer.new(options)	
 							
 							server.mount "/", Rack::Handler::WEBrick,ServerAPI::API.new
@@ -49,9 +53,9 @@ module Vagrant
 							server.start
 							
 							
-						rescue Exception => e  
-								puts e.message 
-						end
+						# rescue Exception => e  
+								# puts e.message 
+						# end
 					
 					#Alternative running mode
 	#				ServerAPI::API.run! :bind => '0.0.0.0', :port => 1234					
@@ -59,8 +63,11 @@ module Vagrant
 					
 				end
 				
-				def self.stop(pid_path)
-					begin
+				def self.stop(pid_path,data_path)
+					
+						
+						# check_password(data_path,passwd);
+						
 						
 						pid_file = File.join(pid_path,PIDFILENAME)
 						
@@ -81,12 +88,31 @@ module Vagrant
 						Process.kill('KILL', pid)
 						#Process.kill 9, pid	
 										
-					rescue Exception => e  
-						puts e.message
-					end 
+					 
 										
 				end
 				
+				private
+				
+				def self.check_password(data_path)				  
+				  @db = DB::DBManager.new(data_path)
+				  if (!@db.node_password_set? || @db.node_default_password_set?)
+				    raise "Please, set first a password with the command \"vagrant nodeserver passwd\""
+				  # else
+				    # if (password==nil || password.size==0)				      
+				      # if STDIN.respond_to?(:noecho)
+                # print "Password: "
+                # password=STDIN.noecho(&:gets).chomp                
+                # print "\n"              
+              # end
+				    # end
+				    
+				    # if(!@db.node_check_password?(password))
+                # raise "Password failed!"
+            # end 
+				  end
+				  true
+				end
 				
 					
 			end

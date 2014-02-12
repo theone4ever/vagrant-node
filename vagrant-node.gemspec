@@ -22,8 +22,10 @@ This plugin has been developed in the context of the Catedra SAES of the Univers
   spec.add_dependency "sinatra"
   spec.add_dependency "json"
   spec.add_dependency "rack"
-  spec.add_dependency "rubyzip"
+  spec.add_dependency "rubyzip", '< 1.0.0'
   spec.add_dependency "sqlite3"
+  spec.add_dependency "ruby2ruby", "~> 2.0.6"
+  spec.add_dependency "ruby_parser", "~> 3.2.2"
   #spec.add_dependency "sambal"
   #spec.add_dependency "rexml"
 
