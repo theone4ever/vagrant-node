@@ -5,6 +5,8 @@ This plugin allows you to set a computer with a virtual environment, configured 
 
 With this plugin installed, the Vagrant environment can perform requests, that you usually can execute locally, but commanded by a remote computer. This service is provided through a REST API that this plugin exposes.
 
+See algo [Vagrant-Web](https://github.com/catedrasaes-umu/vagrantweb), a web app to control and manage nodes running Vagrant and this plugin.
+
 This plugin has been developed in the context of the [Catedra SAES](http://www.catedrasaes.org) of the University of Murcia(Spain).
 
 ##Installation
